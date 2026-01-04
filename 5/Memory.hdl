@@ -1,0 +1,72 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/5/Memory.hdl
+/**
+ * The complete address space of the Hack computer's memory,
+ * including RAM and memory-mapped I/O. 
+ * The chip facilitates read and write operations, as follows:
+ *     Read:  out(t) = Memory[address(t)](t)
+ *     Write: if load(t-1) then Memory[address(t-1)](t) = in(t-1)
+ * In words: the chip always outputs the value stored at the memory 
+ * location specified by address. If load=1, the in value is loaded 
+ * into the memory location specified by address. This value becomes 
+ * available through the out output from the next time step onward.
+ * Address space rules:
+ * Only the upper 16K+8K+1 words of the Memory chip are used. 
+ * Access to address>0x6000 is invalid. Access to any address in 
+ * the range 0x4000-0x5FFF results in accessing the screen memory 
+ * map. Access to address 0x6000 results in accessing the keyboard 
+ * memory map. The behavior in these addresses is described in the Screen
+ * and Keyboard chip specifications given in the lectures and the book.
+ */
+CHIP Memory {
+    IN in[16], load, address[15];
+    OUT out[16];
+
+   
+	PARTS:
+    // --------------------------------------------------------
+    // 1. LOAD LOGIC (Demultiplexing)
+    // --------------------------------------------------------
+    
+    // Determine if we are accessing RAM (0xxxx...) or I/O (1xxxx...)
+    // address[14] is the Most Significant Bit.
+    // If address[14] == 0, we load to RAM. 
+    // If address[14] == 1, we look further (Screen or Keyboard).
+    DMux(in=load, sel=address[14], a=loadRAM, b=loadIO);
+
+    // If we are in the I/O range (1xxxx...), check address[13]
+    // 10xxx... is Screen
+    // 11xxx... is Keyboard (though Keyboard is read-only, so 'loadKBD' is a dead end)
+    DMux(in=loadIO, sel=address[13], a=loadScreen, b=loadKBD);
+
+
+    // --------------------------------------------------------
+    // 2. MEMORY CHIP INSTANTIATION
+    // --------------------------------------------------------
+
+    // RAM16K: Addresses 0 to 16383 (0x0000 - 0x3FFF)
+    // It uses the lower 14 bits of the address.
+    RAM16K(in=in, load=loadRAM, address=address[0..13], out=outRAM);
+
+    // Screen: Addresses 16384 to 24575 (0x4000 - 0x5FFF)
+    // It uses the lower 13 bits of the address (8K size).
+    Screen(in=in, load=loadScreen, address=address[0..12], out=outScreen);
+
+    // Keyboard: Address 24576 (0x6000)
+    // It has no input or load; it just outputs the currently pressed key.
+    Keyboard(out=outKBD);
+
+
+    // --------------------------------------------------------
+    // 3. OUTPUT LOGIC (Multiplexing)
+    // --------------------------------------------------------
+
+    // Select the correct output based on address[13..14]
+    // 00 (RAM)    -> a
+    // 01 (RAM)    -> b  (Because RAM covers the first 16K, both 00... and 01... point to RAM)
+    // 10 (Screen) -> c
+    // 11 (KBD)    -> d
+    Mux4Way16(a=outRAM, b=outRAM, c=outScreen, d=outKBD, sel=address[13..14], out=out);
+}
